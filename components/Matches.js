@@ -12,9 +12,9 @@ const careerText = (c) => (c >= 10 ? '10년 이상' : `${c}년 이상`);
 const tierOpts = TIERS.map((t, i) => [i, `${t.n.toFixed(1)} ${t.name}`]);
 const nums = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 
-function CreateForm({ onSubmit, onClose }) {
+function CreateForm({ onSubmit, onClose, club }) {
   const courts = Object.keys(COURTS);
-  const [f, setF] = useState({ court: courts[0], no: 1, date: '', time: '19:00', kind: '일반', format: '복식', gender: '무관', lo: 0, hi: 6, career: 1, fee: '', cap: 3, memo: '' });
+  const [f, setF] = useState({ court: courts[0], no: 1, date: '', time: '19:00', kind: '일반', format: '복식', gender: '무관', lo: 0, hi: 6, career: 1, fee: '', cap: 3, memo: '', public: true });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const sel = (k, opts) => <select value={f[k]} onChange={set(k)}>{opts.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select>;
   const submit = () => {
@@ -44,6 +44,7 @@ function CreateForm({ onSubmit, onClose }) {
           <label>매칭 메모 ({f.memo.length}/100)</label>
           <textarea value={f.memo} maxLength={100} rows={3} onChange={set('memo')} placeholder="자유롭게 적어 주세요"
             style={{ width: '100%', font: 'inherit', padding: 10, border: '1px solid var(--line)', borderRadius: 10, background: 'var(--bg)', color: 'var(--fg)', marginBottom: 10 }} />
+          {club && <label style={{ display: 'block', color: 'var(--fg)', fontSize: 14, marginBottom: 10 }}><input type="checkbox" style={{ width: 'auto', margin: '0 6px 0 0' }} checked={f.public} onChange={(e) => setF({ ...f, public: e.target.checked })} />공개 (일반/랭크 매칭 목록에도 표시)</label>}
           <button className="btn ball" style={{ width: '100%' }} onClick={submit}>완료</button>
         </div>
       </div>
@@ -51,7 +52,7 @@ function CreateForm({ onSubmit, onClose }) {
   );
 }
 
-export default function Matches({ me, setMe, posts, setPosts }) {
+export default function Matches({ me, setMe, posts, setPosts, clubId }) {
   const [q, setQ] = useState(''), [kind, setKind] = useState(''), [date, setDate] = useState('');
   const [time, setTime] = useState(''), [area, setArea] = useState(''), [help, setHelp] = useState(false);
   const [creating, setCreating] = useState(false), [openId, setOpenId] = useState(null);
@@ -59,13 +60,13 @@ export default function Matches({ me, setMe, posts, setPosts }) {
   if (open) return <MatchDetail post={open} me={me} setMe={setMe} setPosts={setPosts} onBack={() => setOpenId(null)} />;
 
   const list = posts.filter((p) => { const c = COURTS[p.court];
-    return (!q || (p.court + c.addr).includes(q)) && (!kind || p.kind === kind) && (!date || p.date === date) && (!time || band(p.time) === time) && (!area || c.area === area); });
+    return (clubId ? p.clubId === clubId : !p.clubId || p.public) && (!q || (p.court + c.addr).includes(q)) && (!kind || p.kind === kind) && (!date || p.date === date) && (!time || band(p.time) === time) && (!area || c.area === area); });
   const apply = (p) => setPosts(posts.map((x) => (x.id === p.id ? { ...x, waiting: [...x.waiting, { name: ME, tier: me.tier }] } : x)));
-  const create = (d) => { setPosts([{ ...d, id: Date.now(), host: { name: ME, tier: me.tier }, waiting: [], accepted: [], result: null, evals: {}, recvDemo: false }, ...posts]); setCreating(false); };
+  const create = (d) => { setPosts([{ ...d, clubId: clubId || null, id: Date.now(), host: { name: ME, tier: me.tier }, waiting: [], accepted: [], result: null, evals: {}, recvDemo: false }, ...posts]); setCreating(false); };
 
   return (
     <div>
-      <h1>일반 / 랭크 매칭</h1>
+      <h1>{clubId ? '정모 매칭' : '일반 / 랭크 매칭'}</h1>
       <input placeholder="검색 (코트명, 주소)" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="grid2">
         <select value={kind} onChange={(e) => setKind(e.target.value)}><option value="">일반/랭크 전체</option><option>일반</option><option>랭크</option></select>
@@ -101,7 +102,7 @@ export default function Matches({ me, setMe, posts, setPosts }) {
       </div>
       <button aria-label="매칭 만들기" onClick={() => setCreating(true)}
         style={{ position: 'fixed', right: 16, bottom: 'calc(84px + env(safe-area-inset-bottom))', width: 56, height: 56, borderRadius: '50%', border: 0, background: 'var(--ball)', color: 'var(--ballfg)', fontSize: 32, lineHeight: 1, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 10 }}>+</button>
-      {creating && <CreateForm onSubmit={create} onClose={() => setCreating(false)} />}
+      {creating && <CreateForm onSubmit={create} onClose={() => setCreating(false)} club={!!clubId} />}
     </div>
   );
 }

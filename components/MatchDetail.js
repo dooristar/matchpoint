@@ -66,7 +66,7 @@ export default function MatchDetail({ post: p, me, setMe, setPosts, onBack }) {
       const r = next.matches[next.matches.length - 1];
       gain = { delta: r.delta, note: r.note };
     }
-    setMe({ ...next, matchLog: [...(next.matchLog || []), { id: p.id, kind: p.kind, win, ts: Date.now() }] });
+    setMe({ ...next, matchLog: [...(next.matchLog || []), { id: p.id, kind: p.kind, win, format: p.format, ts: Date.now() }] });
     upd((x) => ({ ...x, result: { ...x.result, confirmed, final: true, gain } }));
   };
   const rnd = () => 3 + Math.floor(Math.random() * 3);
