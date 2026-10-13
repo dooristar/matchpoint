@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { AREAS, ME, NAMES } from '../lib/data';
+import { AREAS, COURTS, ME, NAMES } from '../lib/data';
 import { TIERS } from '../lib/rating';
 import { makeSlots, buildRounds } from '../lib/tournaments';
 import TierIcon from './TierIcon';
@@ -143,28 +143,67 @@ function Detail({ t, me, setTours, onBack }) {
   );
 }
 
-export default function Tournaments({ tours, setTours, me }) {
+const TIMES = Array.from({ length: 17 }, (_, i) => `${pad(6 + i)}:00`);
+const FAB = { position: 'fixed', right: 16, bottom: 'calc(84px + env(safe-area-inset-bottom))', width: 56, height: 56, borderRadius: '50%', border: 0, background: 'var(--ball)', color: 'var(--ballfg)', fontSize: 32, lineHeight: 1, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 10 };
+
+function CreateTour({ club, onSubmit, onClose }) {
+  const [f, setF] = useState({ name: '', place: club.court, date: '', time: '09:00', regStart: '', regEnd: '', format: '복식', cap: 8, fee: '', prize: '', public: true });
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const opt = (arr) => arr.map((v) => <option key={v} value={v}>{v}</option>);
+  const submit = () => {
+    if (!f.name.trim() || !f.date || !f.regStart || !f.regEnd) { alert('대회명, 대회일, 접수 기간을 입력해 주세요'); return; }
+    if (f.regStart > f.regEnd || f.regEnd > f.date) { alert('접수 기간과 대회일을 확인해 주세요'); return; }
+    onSubmit({ ...f, name: f.name.trim(), area: (COURTS[f.place] || {}).area || club.area, cap: +f.cap, fee: +f.fee || 0 });
+  };
+  return (
+    <div role="dialog" aria-modal="true" aria-label="월례대회 만들기" style={{ position: 'fixed', inset: 0, background: 'var(--bg)', overflowY: 'auto', zIndex: 20, padding: 'calc(16px + env(safe-area-inset-top)) 16px 40px' }}>
+      <div style={{ maxWidth: 560, margin: '0 auto' }}>
+        <div className="row"><h1>월례대회 만들기</h1><button className="btn" onClick={onClose}>닫기</button></div>
+        <div className="card">
+          <label>대회명</label><input value={f.name} onChange={set('name')} />
+          <label>장소</label><select value={f.place} onChange={set('place')}>{opt(Object.keys(COURTS))}</select>
+          <div className="grid2">
+            <div><label>대회일</label><input type="date" value={f.date} onChange={set('date')} /></div>
+            <div><label>시간</label><select value={f.time} onChange={set('time')}>{opt(TIMES)}</select></div>
+            <div><label>접수 시작</label><input type="date" value={f.regStart} onChange={set('regStart')} /></div>
+            <div><label>접수 마감</label><input type="date" value={f.regEnd} onChange={set('regEnd')} /></div>
+            <div><label>게임방법</label><select value={f.format} onChange={set('format')}>{opt(['단식', '복식', '혼합복식'])}</select></div>
+            <div><label>모집팀수</label><select value={f.cap} onChange={set('cap')}>{opt([4, 8, 16, 32])}</select></div>
+          </div>
+          <label>참가비 (원)</label><input type="number" inputMode="numeric" min="0" value={f.fee} onChange={set('fee')} placeholder="0" />
+          <label>시상</label><input value={f.prize} onChange={set('prize')} placeholder="예) 우승 상품권, 준우승 음료권" />
+          <label style={{ display: 'block', color: 'var(--fg)', fontSize: 14, margin: '4px 0 10px' }}><input type="checkbox" style={{ width: 'auto', margin: '0 6px 0 0' }} checked={f.public} onChange={(e) => setF({ ...f, public: e.target.checked })} />공개 (대회 메뉴·클럽교류전에도 표시)</label>
+          <button className="btn ball" style={{ width: '100%' }} onClick={submit}>완료</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function Tournaments({ tours, setTours, me, clubId, club, exchange }) {
   const [area, setArea] = useState(''), [ym, setYM] = useState([2026, 9]), [sel, setSel] = useState('');
-  const [q, setQ] = useState(''), [fmt, setFmt] = useState(''), [st, setSt] = useState(''), [openId, setOpenId] = useState(null);
+  const [q, setQ] = useState(''), [fmt, setFmt] = useState(''), [st, setSt] = useState(''), [openId, setOpenId] = useState(null), [creating, setCreating] = useState(false);
   const open = tours.find((t) => t.id === openId);
   if (open) return <Detail t={open} me={me} setTours={setTours} onBack={() => setOpenId(null)} />;
 
   const [y, m] = ym, prefix = `${y}-${pad(m + 1)}`;
-  const inArea = tours.filter((t) => !area || t.area === area);
+  const noCal = !!clubId || !!exchange;
+  const scope = (t) => (clubId ? t.clubId === clubId : exchange ? t.clubId && t.public : !t.clubId || t.public);
+  const inArea = tours.filter((t) => scope(t) && (!area || t.area === area));
   const marks = new Set(inArea.map((t) => t.date));
-  const list = inArea.filter((t) => (sel ? t.date === sel : t.date.startsWith(prefix)) && (!q || (t.name + t.place).includes(q)) && (!fmt || t.format === fmt) && (!st || status(t) === st)).sort((a, b) => a.date.localeCompare(b.date));
+  const list = inArea.filter((t) => (sel ? t.date === sel : noCal || t.date.startsWith(prefix)) && (!q || (t.name + t.place).includes(q)) && (!fmt || t.format === fmt) && (!st || status(t) === st)).sort((a, b) => a.date.localeCompare(b.date));
 
   return (
     <div>
-      <h1>대회</h1>
+      <h1>{clubId ? '월례대회' : exchange ? '클럽교류전' : '대회'}</h1>
       <select aria-label="지역" value={area} onChange={(e) => setArea(e.target.value)}><option value="">지역 전체</option>{AREAS.map((a) => <option key={a}>{a}</option>)}</select>
-      <Calendar y={y} m={m} setYM={setYM} sel={sel} setSel={setSel} marks={marks} />
+      {noCal ? <input type="date" aria-label="날짜" value={sel} onChange={(e) => setSel(e.target.value)} /> : <Calendar y={y} m={m} setYM={setYM} sel={sel} setSel={setSel} marks={marks} />}
       <input placeholder="대회 검색 (대회명, 장소)" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="grid2">
         <select value={fmt} onChange={(e) => setFmt(e.target.value)}><option value="">게임방법 전체</option><option>단식</option><option>복식</option><option>혼합복식</option></select>
         <select value={st} onChange={(e) => setSt(e.target.value)}><option value="">접수상태 전체</option><option>접수중</option><option>접수예정</option><option>접수마감</option><option>마감</option></select>
       </div>
-      <div className="mute" style={{ margin: '6px 0' }}>{sel ? `${sel} 대회` : `${y}년 ${m + 1}월 대회`} {list.length}건 {sel && <button className="btn" style={{ padding: '2px 8px', marginLeft: 6 }} onClick={() => setSel('')}>날짜 해제</button>}</div>
+      <div className="mute" style={{ margin: '6px 0' }}>{sel ? `${sel} 대회` : noCal ? '전체 대회' : `${y}년 ${m + 1}월 대회`} {list.length}건 {sel && <button className="btn" style={{ padding: '2px 8px', marginLeft: 6 }} onClick={() => setSel('')}>날짜 해제</button>}</div>
       {list.length === 0 && <div className="card mute">조건에 맞는 대회가 없어요.</div>}
       {list.map((t) => (
         <div className="card" key={t.id} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => setOpenId(t.id)} onKeyDown={(e) => e.key === 'Enter' && setOpenId(t.id)}>
@@ -174,6 +213,12 @@ export default function Tournaments({ tours, setTours, me }) {
           <div className="mute">참가비 {t.fee.toLocaleString()}원 · {t.participants.length}/{t.cap}팀</div>
         </div>
       ))}
+      {clubId && club && club.admin === ME && (
+        <>
+          <button aria-label="월례대회 만들기" onClick={() => setCreating(true)} style={FAB}>+</button>
+          {creating && <CreateTour club={club} onClose={() => setCreating(false)} onSubmit={(t) => { setTours([{ ...t, id: 't' + Date.now(), host: ME, clubId, participants: [], bracket: null }, ...tours]); setCreating(false); }} />}
+        </>
+      )}
     </div>
   );
 }

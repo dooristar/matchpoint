@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { AREAS, COURTS, ME } from '../lib/data';
 import { ntrp } from '../lib/rating';
 import Matches from './Matches';
+import Tournaments from './Tournaments';
 
 const pad = (n) => String(n).padStart(2, '0');
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
@@ -172,53 +173,82 @@ function CreateClub({ onSubmit, onClose }) {
   );
 }
 
-export default function Club({ me, setMe, clubs, setClubs, posts, setPosts }) {
-  const [ar, setAr] = useState(''), [dist, setDist] = useState(''), [q, setQ] = useState('');
-  const [openId, setOpenId] = useState(null), [creating, setCreating] = useState(false), [sub, setSub] = useState('클럽프로필');
-  const club = clubs.find((c) => c.id === openId);
-  const upd = (fn) => setClubs((cs) => cs.map((c) => (c.id === openId ? fn(c) : c)));
-  const ym = today().slice(0, 7), mine = (c) => c.members.some((m) => m.name === ME);
-  const join = (c) => setClubs(clubs.map((x) => (x.id === c.id ? { ...x, members: [...x.members, { name: ME, birth: '-', career: '-', ntrp: ntrp(me.tier, me.pts), joined: ym }] } : x)));
-  const create = (f) => { setClubs([{ id: 'c' + Date.now(), ...f, admin: ME, court: Object.keys(COURTS)[0], meetDay: '토', rules: [], achievements: [], members: [{ name: ME, birth: '-', career: '-', ntrp: ntrp(me.tier, me.pts), joined: ym }], notices: [], rankRules: [], rankLog: [], fees: { amount: 20000, paid: {} } }, ...clubs]); setCreating(false); };
+const FAB = { position: 'fixed', right: 16, bottom: 'calc(84px + env(safe-area-inset-bottom))', width: 56, height: 56, borderRadius: '50%', border: 0, background: 'var(--ball)', color: 'var(--ballfg)', fontSize: 32, lineHeight: 1, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 10 };
 
-  if (club) {
-    const admin = club.admin === ME, isMember = mine(club);
-    return (
-      <div>
-        <div className="row" style={{ marginBottom: 10 }}><button className="btn" onClick={() => { setOpenId(null); setSub('클럽프로필'); }}>← 클럽 목록</button><b>{club.name}</b></div>
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 12, paddingBottom: 4 }}>
-          {SUBS.map((s) => <button key={s} className={'btn' + (sub === s ? ' ball' : '')} style={{ flex: 'none' }} aria-pressed={sub === s} onClick={() => setSub(s)}>{s}</button>)}
+export default function Club({ me, setMe, clubs, setClubs, posts, setPosts, tours, setTours }) {
+  const [top, setTop] = useState('내클럽'), [sub, setSub] = useState('클럽프로필'), [curId, setCurId] = useState(null);
+  const [ar, setAr] = useState(''), [dist, setDist] = useState(''), [q, setQ] = useState(''), [viewId, setViewId] = useState(null), [creating, setCreating] = useState(false);
+  const ym = today().slice(0, 7), mine = (c) => c.members.some((m) => m.name === ME), myClubs = clubs.filter(mine);
+  const club = myClubs.find((c) => c.id === curId) || myClubs[0], viewed = clubs.find((c) => c.id === viewId);
+  const upd = (id) => (fn) => setClubs((cs) => cs.map((c) => (c.id === id ? fn(c) : c)));
+  const me0 = { name: ME, birth: '-', career: '-', ntrp: ntrp(me.tier, me.pts), joined: ym };
+  const join = (c) => setClubs(clubs.map((x) => (x.id === c.id ? { ...x, members: [...x.members, me0] } : x)));
+  const create = (f) => {
+    const id = 'c' + Date.now();
+    setClubs([{ id, ...f, admin: ME, court: Object.keys(COURTS)[0], meetDay: '토', rules: [], achievements: [], members: [me0], notices: [], rankRules: [], rankLog: [], fees: { amount: 20000, paid: {} } }, ...clubs]);
+    setCreating(false); setCurId(id); setSub('클럽프로필'); setTop('내클럽');
+  };
+
+  let body;
+  if (top === '내클럽') {
+    if (!club) body = <div className="card"><div>가입한 클럽이 없어요.</div><button className="btn ball" style={{ marginTop: 8 }} onClick={() => setTop('클럽모집')}>클럽모집 보러가기</button></div>;
+    else {
+      const admin = club.admin === ME, u = upd(club.id);
+      body = (
+        <div>
+          {myClubs.length > 1 && <select aria-label="내 클럽" value={club.id} onChange={(e) => { setCurId(e.target.value); setSub('클럽프로필'); }}>{myClubs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}
+          <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 12, paddingBottom: 4 }}>
+            {SUBS.map((s) => <button key={s} className={'btn' + (sub === s ? ' ball' : '')} style={{ flex: 'none' }} aria-pressed={sub === s} onClick={() => setSub(s)}>{s}</button>)}
+          </div>
+          {sub === '클럽프로필' && <Info key={club.id} club={club} upd={u} admin={admin} me={me} />}
+          {sub === '공지' && <Notices key={club.id} club={club} upd={u} isMember />}
+          {sub === '정모매칭' && <Matches key={club.id} me={me} setMe={setMe} posts={posts} setPosts={setPosts} clubId={club.id} />}
+          {sub === '월례대회' && <Tournaments key={club.id} tours={tours} setTours={setTours} me={me} clubId={club.id} club={club} />}
+          {sub === '클럽랭킹' && <RankTab key={club.id} club={club} upd={u} admin={admin} />}
+          {sub === '회비' && <Fees key={club.id} club={club} upd={u} admin={admin} />}
+          {sub === '사진첩' && <div className="card"><span className="tag ball">개발 예정</span><p style={{ margin: '8px 0 0' }}>추후 업데이트</p></div>}
         </div>
-        {sub === '클럽프로필' && <Info club={club} upd={upd} admin={admin} me={me} />}
-        {sub === '공지' && <Notices club={club} upd={upd} isMember={isMember} />}
-        {sub === '정모매칭' && <Matches me={me} setMe={setMe} posts={posts} setPosts={setPosts} clubId={club.id} />}
-        {sub === '월례대회' && <div className="card"><span className="tag ball">다음 업데이트</span><p style={{ margin: '8px 0 0' }}>대회와 같은 규칙·대진표로 월례대회(교류전)를 만들 수 있게 연결할 예정이에요. 대회 만들기에는 공개여부 체크도 들어가요.</p></div>}
-        {sub === '클럽랭킹' && <RankTab club={club} upd={upd} admin={admin} />}
-        {sub === '회비' && <Fees club={club} upd={upd} admin={admin} />}
-        {sub === '사진첩' && <div className="card"><span className="tag ball">개발 예정</span><p style={{ margin: '8px 0 0' }}>추후 업데이트</p></div>}
+      );
+    }
+  } else if (top === '클럽교류전') {
+    body = <Tournaments tours={tours} setTours={setTours} me={me} exchange />;
+  } else if (viewed) {
+    body = (
+      <div>
+        <div className="row" style={{ marginBottom: 10 }}><button className="btn" onClick={() => setViewId(null)}>← 클럽 목록</button>
+          {mine(viewed) ? <span className="tag ball">가입됨</span> : <button className="btn ball" onClick={() => join(viewed)}>가입</button>}</div>
+        <Info key={viewed.id} club={viewed} upd={upd(viewed.id)} admin={viewed.admin === ME} me={me} />
+      </div>
+    );
+  } else {
+    const list = clubs.filter((c) => (!ar || c.area === ar) && (!dist || c.district.includes(dist)) && (!q || (c.name + c.intro).includes(q)));
+    body = (
+      <div>
+        <h1>클럽 모집</h1>
+        <div className="grid2">
+          <select aria-label="지역" value={ar} onChange={(e) => setAr(e.target.value)}><option value="">지역 전체</option>{AREAS.map((a) => <option key={a}>{a}</option>)}</select>
+          <input aria-label="구" placeholder="구/시 검색" value={dist} onChange={(e) => setDist(e.target.value)} />
+        </div>
+        <input placeholder="클럽 검색 (이름, 소개)" value={q} onChange={(e) => setQ(e.target.value)} />
+        {list.length === 0 && <div className="card mute">조건에 맞는 클럽이 없어요.</div>}
+        {list.map((c) => (
+          <div className="card" key={c.id} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => setViewId(c.id)} onKeyDown={(e) => e.key === 'Enter' && setViewId(c.id)}>
+            <div className="row"><b>{c.name}</b><span className="mute">{c.area} {c.district}</span></div>
+            <div className="mute" style={{ margin: '4px 0' }}>{c.intro}</div>
+            <div className="row"><span className="mute">회원 {c.members.length}명 · 주코트 {c.court} · 정모 {c.meetDay}요일</span>
+              {mine(c) ? <span className="tag ball">가입됨</span> : <button className="btn" onClick={(e) => { e.stopPropagation(); join(c); }}>가입</button>}</div>
+          </div>))}
+        <button aria-label="클럽 만들기" onClick={() => setCreating(true)} style={FAB}>+</button>
       </div>
     );
   }
 
-  const list = clubs.filter((c) => (!ar || c.area === ar) && (!dist || c.district.includes(dist)) && (!q || (c.name + c.intro).includes(q)));
   return (
     <div>
-      <h1>클럽 모집</h1>
-      <div className="grid2">
-        <select aria-label="지역" value={ar} onChange={(e) => setAr(e.target.value)}><option value="">지역 전체</option>{AREAS.map((a) => <option key={a}>{a}</option>)}</select>
-        <input aria-label="구" placeholder="구/시 검색" value={dist} onChange={(e) => setDist(e.target.value)} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 12 }}>
+        {['내클럽', '클럽모집', '클럽교류전'].map((k) => <button key={k} className={'btn' + (top === k ? ' ball' : '')} aria-pressed={top === k} onClick={() => { setTop(k); setViewId(null); }}>{k}</button>)}
       </div>
-      <input placeholder="클럽 검색 (이름, 소개)" value={q} onChange={(e) => setQ(e.target.value)} />
-      {list.length === 0 && <div className="card mute">조건에 맞는 클럽이 없어요.</div>}
-      {list.map((c) => (
-        <div className="card" key={c.id} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => setOpenId(c.id)} onKeyDown={(e) => e.key === 'Enter' && setOpenId(c.id)}>
-          <div className="row"><b>{c.name}</b><span className="mute">{c.area} {c.district}</span></div>
-          <div className="mute" style={{ margin: '4px 0' }}>{c.intro}</div>
-          <div className="row"><span className="mute">회원 {c.members.length}명 · 주코트 {c.court} · 정모 {c.meetDay}요일</span>
-            {mine(c) ? <span className="tag ball">가입됨</span> : <button className="btn" onClick={(e) => { e.stopPropagation(); join(c); }}>가입</button>}</div>
-        </div>))}
-      <button aria-label="클럽 만들기" onClick={() => setCreating(true)}
-        style={{ position: 'fixed', right: 16, bottom: 'calc(84px + env(safe-area-inset-bottom))', width: 56, height: 56, borderRadius: '50%', border: 0, background: 'var(--ball)', color: 'var(--ballfg)', fontSize: 32, lineHeight: 1, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,.3)', zIndex: 10 }}>+</button>
+      {body}
       {creating && <CreateClub onSubmit={create} onClose={() => setCreating(false)} />}
     </div>
   );
