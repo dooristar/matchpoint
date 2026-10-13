@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
-import { AREAS, POSTS, RANK_HELP } from '../lib/data';
+import { AREAS, POSTS } from '../lib/data';
 import { TIERS } from '../lib/rating';
+import RankHelp from './RankHelp';
 
 export default function Matches({ me }) {
   const [q, setQ] = useState(''), [kind, setKind] = useState(''), [date, setDate] = useState('');
@@ -20,8 +21,8 @@ export default function Matches({ me }) {
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <select value={time} onChange={(e) => setTime(e.target.value)}><option value="">시간 전체</option><option>오전</option><option>오후</option><option>저녁</option></select>
       </div>
-      <button className="btn ball" onClick={() => setHelp(!help)}>랭크 설명</button>
-      {help && <div className="card" style={{ marginTop: 8 }}>{RANK_HELP}</div>}
+      <button className="btn ball" aria-expanded={help} onClick={() => setHelp(!help)}>랭크 설명 {help ? '닫기' : '보기'}</button>
+      {help && <RankHelp />}
       <div style={{ marginTop: 12 }}>
         {list.length === 0 && <div className="card mute">조건에 맞는 매칭이 없어요.</div>}
         {list.map((p) => {
