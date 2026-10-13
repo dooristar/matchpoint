@@ -45,16 +45,23 @@ function Stars({ value, onChange, label, max = 5, size = 28 }) {
 
 export default function Profile({ me, setMe }) {
   const [rec, setRec] = useState('일반');
-  const skills = { ...DEFAULT_SKILLS, ...(me.skills || {}) };
-  const review = { ...DEFAULT_REVIEW, ...(me.review || {}) };
+  const received = me.received || [];
+  const avg = (get) => (received.length ? Math.round((received.reduce((a, e) => a + get(e), 0) / received.length) * 10) / 10 : null);
+  const baseSkills = { ...DEFAULT_SKILLS, ...(me.skills || {}) };
+  const skills = {};
+  SKILL_ORDER.forEach((k) => { const a = avg((e) => e.s[k]); skills[k] = a === null ? baseSkills[k] : Math.min(10, Math.max(1, Math.round(a * 2))); });
+  const review = {};
+  REVIEW_ROWS.forEach(([k]) => { const a = avg((e) => e.r[k]); review[k] = a === null ? DEFAULT_REVIEW[k] : a; });
   const styles = me.styles || ['올라운더'];
-  const setSkill = (k, v) => setMe({ ...me, skills: { ...skills, [k]: v } });
-  const setReview = (k, v) => setMe({ ...me, review: { ...review, [k]: v } });
+  const setSkill = (k, v) => { if (!received.length) setMe({ ...me, skills: { ...baseSkills, [k]: v } }); };
   const toggleStyle = (s) => setMe({ ...me, styles: styles.includes(s) ? styles.filter((x) => x !== s) : [...styles, s] });
 
   const fmt = (r) => `${r.g}전 ${r.w}승 ${r.g - r.w}패`;
-  const total = Object.values(RECORDS).reduce((a, r) => ({ g: a.g + r.g, w: a.w + r.w }), { g: 0, w: 0 });
-  const cur = RECORDS[rec];
+  const log = me.matchLog || [];
+  const recs = {};
+  Object.keys(RECORDS).forEach((k) => { const l = log.filter((m) => m.kind === k); recs[k] = { g: RECORDS[k].g + l.length, w: RECORDS[k].w + l.filter((m) => m.win).length }; });
+  const total = Object.values(recs).reduce((a, r) => ({ g: a.g + r.g, w: a.w + r.w }), { g: 0, w: 0 });
+  const cur = recs[rec];
   const infoRow = { marginBottom: 6, fontSize: 14 };
   const t = TIERS[me.tier];
 
@@ -102,6 +109,7 @@ export default function Profile({ me, setMe }) {
               <span className="mute" style={{ minWidth: 34 }}>{skills[k]}/10</span>
             </div>
           ))}
+          <div className="mute" style={{ fontSize: 12 }}>{received.length ? `받은 평가 ${received.length}개 평균 반영` : '받은 평가가 없어 직접 설정한 값이에요'}</div>
         </div>
       </div>
 
@@ -132,13 +140,13 @@ export default function Profile({ me, setMe }) {
 
       {/* 평가 */}
       <div className="card">
-        <b>평가</b>
+        <b>받은 평가</b> <span className="mute">{received.length ? `${received.length}개 평균` : '아직 없어요 (예시 값)'}</span>
         {REVIEW_ROWS.map(([k, name]) => (
           <div className="row" key={k} style={{ marginTop: 8 }}>
             <span>{name}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Stars value={review[k]} onChange={(v) => setReview(k, v)} label={name} />
-              <span className="mute" style={{ minWidth: 30, textAlign: 'right' }}>{k === 'level' ? LEVELS[review[k] - 1].toFixed(1) : `${review[k]}/5`}</span>
+              <span role="img" aria-label={`${name} 평균 ${review[k]}점`} style={{ fontSize: 24, color: '#e6b800' }}>{'★'.repeat(Math.round(review[k]))}<span style={{ color: 'var(--line)' }}>{'★'.repeat(5 - Math.round(review[k]))}</span></span>
+              <span className="mute" style={{ minWidth: 30, textAlign: 'right' }}>{k === 'level' ? (2 + (review[k] - 1) * 0.5).toFixed(1) : `${Number(review[k]).toFixed(1)}/5`}</span>
             </div>
           </div>
         ))}
