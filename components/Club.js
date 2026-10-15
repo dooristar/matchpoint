@@ -134,22 +134,169 @@ function RankTab({ club, upd, admin }) {
   );
 }
 
+const BANKS = ['카카오뱅크 모임통장', '토스뱅크 모임통장', '국민은행', '신한은행', '우리은행', '하나은행', '농협은행'];
+const won = (n) => `${Number(n).toLocaleString()}원`;
+const dt = (s) => new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+const addDays = (s, n) => { const d = dt(s); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const net = (arr) => arr.reduce((a, x) => a + (x.type === 'in' ? x.amount : -x.amount), 0);
+
 function Fees({ club, upd, admin }) {
-  const d = new Date(), months = Array.from({ length: 6 }, (_, i) => { const x = new Date(d.getFullYear(), d.getMonth() - 5 + i, 1); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}`; });
-  const toggle = (mo, name) => { if (admin) upd((c) => { const cur = c.fees.paid[mo] || []; return { ...c, fees: { ...c.fees, paid: { ...c.fees.paid, [mo]: cur.includes(name) ? cur.filter((n) => n !== name) : [...cur, name] } } }; }); };
-  const now = months[5], paid = (club.fees.paid[now] || []).length;
+  const f = club.fees, tx = f.tx || [], alerts = f.alerts || [], acct = f.account || null, due = f.dueDay || 5;
+  const [mo, setMo] = useState(today().slice(0, 7)), [sec, setSec] = useState('납부현황');
+  const [bank, setBank] = useState(BANKS[0]), [no, setNo] = useState(''), [holder, setHolder] = useState(club.name);
+  const [inWho, setInWho] = useState(''), [inAmt, setInAmt] = useState(f.amount);
+  const [outCat, setOutCat] = useState('공구입'), [outAmt, setOutAmt] = useState(''), [outMemo, setOutMemo] = useState('');
+  const shift = (d) => { const x = new Date(+mo.slice(0, 4), +mo.slice(5) - 1 + d, 1); setMo(`${x.getFullYear()}-${pad(x.getMonth() + 1)}`); };
+
+  const total = club.members.length, paidNames = f.paid[mo] || [];
+  const unpaid = club.members.filter((m) => !paidNames.includes(m.name)), paidCnt = total - unpaid.length;
+  const rate = total ? Math.round((paidCnt / total) * 1000) / 10 : 0;
+  const setPaid = (name, v) => admin && upd((c) => { const cur = c.fees.paid[mo] || []; return { ...c, fees: { ...c.fees, paid: { ...c.fees.paid, [mo]: v ? [...cur.filter((n) => n !== name), name] : cur.filter((n) => n !== name) } } }; });
+  const connect = () => {
+    const d = no.replace(/\D/g, '');
+    if (d.length < 8) { alert('계좌번호를 확인해 주세요'); return; }
+    upd((c) => ({ ...c, fees: { ...c.fees, account: { bank, last4: d.slice(-4), holder: holder.trim() || c.name } } })); setNo('');   // 뒤 4자리만 저장
+  };
+  const disconnect = () => { if (confirm('모임통장 연결을 해제할까요?')) upd((c) => ({ ...c, fees: { ...c.fees, account: null } })); };
+  // (시연) 통장 입금 알림: 입금자명이 회원이고 금액이 월회비 이상이면 납부 자동 체크
+  const addIn = () => {
+    const who = inWho || (club.members[0] || {}).name, amount = +inAmt, date = today(), m = date.slice(0, 7);
+    if (!who || !amount) return;
+    upd((c) => {
+      const fe = c.fees, cur = fe.paid[m] || [], ok = c.members.some((x) => x.name === who) && amount >= fe.amount;
+      const text = ok ? `${who}님 ${+m.slice(5)}월 회비 ${won(amount)} 입금 확인 → 납부 자동 체크` : `${who} ${won(amount)} 입금 · 회원 또는 금액이 달라 확인이 필요해요`;
+      return { ...c, fees: { ...fe, paid: ok && !cur.includes(who) ? { ...fe.paid, [m]: [...cur, who] } : fe.paid, tx: [{ id: Date.now(), date, type: 'in', amount, who, cat: '회비' }, ...(fe.tx || [])], alerts: [{ id: Date.now() + 1, date, text }, ...(fe.alerts || [])] } };
+    });
+  };
+  const addOut = () => {
+    const amount = +outAmt, date = today(), memo = outMemo.trim();
+    if (!amount) return;
+    upd((c) => ({ ...c, fees: { ...c.fees, tx: [{ id: Date.now(), date, type: 'out', amount, cat: outCat, memo }, ...(c.fees.tx || [])], alerts: [{ id: Date.now() + 1, date, text: `통장 출금 ${won(amount)} · ${outCat}${memo ? ` (${memo})` : ''}` }, ...(c.fees.alerts || [])] } }));
+    setOutAmt(''); setOutMemo('');
+  };
+
+  // 납부일 알림 (앱 안에서 계산해 보여줌 — 실제 푸시는 서버 연동 후)
+  const t = today(), cur = t.slice(0, 7), dueDate = `${cur}-${pad(due)}`, plus5 = addDays(dueDate, 5);
+  const curUnpaid = club.members.filter((m) => !(f.paid[cur] || []).includes(m.name));
+  const days = Math.round((dt(dueDate) - dt(t)) / 864e5), auto = [];
+  auto.push(days > 0 ? `이번 달 회비 납부일까지 D-${days} (${+cur.slice(5)}월 ${due}일)` : `${+cur.slice(5)}월 회비 납부일(${due}일)이에요 · 미납 ${curUnpaid.length}명`);
+  if (t >= plus5 && curUnpaid.length) auto.push(`납부일 +5일 경과 · 미납자 알림: ${curUnpaid.map((m) => m.name).join(', ')}`);
+
+  const mtx = tx.filter((x) => x.date.startsWith(mo)), opening = net(tx.filter((x) => x.date.slice(0, 7) < mo));
+  const inSum = net(mtx.filter((x) => x.type === 'in')), outSum = -net(mtx.filter((x) => x.type === 'out'));
+  const months = Array.from({ length: 6 }, (_, i) => { const x = new Date(+mo.slice(0, 4), +mo.slice(5) - 1 - 5 + i, 1); return `${x.getFullYear()}-${pad(x.getMonth() + 1)}`; });
+  const txRow = (x) => (
+    <div className="row" key={x.id} style={{ marginBottom: 6 }}>
+      <span><span className="mute">{x.date.slice(5)}</span> {x.type === 'in' ? <b>{x.who}</b> : <b>{x.cat}</b>} <span className="mute">{x.type === 'in' ? x.cat : x.memo}</span></span>
+      <b className={x.type === 'in' ? 'up' : 'down'}>{x.type === 'in' ? '+' : '-'}{won(x.amount)}</b>
+    </div>);
+  const big = { fontSize: 20 };
+
   return (
-    <div className="card">
-      <div className="row" style={{ flexWrap: 'wrap' }}><b>월회비 {club.fees.amount.toLocaleString()}원</b><span className="mute">{now} 납부 {paid}/{club.members.length}명 · {(paid * club.fees.amount).toLocaleString()}원</span></div>
-      <div style={{ overflowX: 'auto', marginTop: 8 }}>
-        <table style={{ whiteSpace: 'nowrap' }}>
-          <thead><tr><th className="mute" style={{ fontWeight: 400 }}>이름</th>{months.map((mo) => <th key={mo} className="mute" style={{ fontWeight: 400 }}>{+mo.slice(5)}월</th>)}</tr></thead>
-          <tbody>{club.members.map((m) => (
-            <tr key={m.name}><td><b>{m.name}</b></td>{months.map((mo) => { const ok = (club.fees.paid[mo] || []).includes(m.name); return (
-              <td key={mo}><button type="button" disabled={!admin} aria-label={`${m.name} ${mo} ${ok ? '납부' : '미납'}`} onClick={() => toggle(mo, m.name)} style={{ border: 0, background: 'none', font: 'inherit', cursor: admin ? 'pointer' : 'default', color: ok ? 'var(--win)' : 'var(--lose)', fontWeight: 700 }}>{ok ? '✓' : '–'}</button></td>); })}</tr>))}</tbody>
-        </table>
+    <div>
+      <div className="card">
+        <div className="row"><b style={{ fontSize: 18 }}>{club.name} 회비 관리</b>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button className="btn" style={{ padding: '2px 8px' }} aria-label="이전 달" onClick={() => shift(-1)}>‹</button>
+            <span className="tag">{+mo.slice(5)}월 회비</span>
+            <button className="btn" style={{ padding: '2px 8px' }} aria-label="다음 달" onClick={() => shift(1)}>›</button></span></div>
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginTop: 10 }}>
+          {['납부현황', '통장내역', '명세서', '알림'].map((s) => <button key={s} className={'btn' + (sec === s ? ' ball' : '')} style={{ flex: 'none' }} aria-pressed={sec === s} onClick={() => setSec(s)}>{s}</button>)}
+        </div>
       </div>
-      {admin ? <div className="mute" style={{ marginTop: 6 }}>칸을 누르면 납부/미납이 바뀌어요.</div> : <div className="mute" style={{ marginTop: 6 }}>납부 처리는 운영진만 할 수 있어요.</div>}
+
+      {sec === '납부현황' && (
+        <div>
+          <div className="card">
+            <div className="grid3">
+              <div><div className="mute">전체 회원</div><b style={big}>{total}명</b></div>
+              <div><div className="mute">납부 완료</div><b className="up" style={big}>{paidCnt}명</b></div>
+              <div><div className="mute">미납</div><b style={big}>{unpaid.length}명</b></div>
+            </div>
+            <div className="row" style={{ marginTop: 14, gap: 16 }}>
+              <div><div className="mute">납부율</div><b style={big}>{rate}%</b></div>
+              <div style={{ flex: 1 }}><div className="bar" role="progressbar" aria-label="납부율" aria-valuemin="0" aria-valuemax="100" aria-valuenow={rate}><i style={{ width: rate + '%', background: 'var(--win)' }} /></div></div>
+            </div>
+            <div className="mute" style={{ marginTop: 6 }}>월회비 {won(f.amount)} · 납부일 매월 {due}일</div>
+          </div>
+          <div className="card"><b>미납 회원</b>
+            {unpaid.length === 0 && <div className="mute" style={{ marginTop: 8 }}>미납 회원이 없어요 🎉</div>}
+            {unpaid.map((m) => (
+              <div className="row" key={m.name} style={{ marginTop: 10 }}>
+                <span><div>{m.name}</div><div className="mute">{won(f.amount)}</div></span>
+                <button type="button" className="tag" disabled={!admin} aria-label={`${m.name} 미납${admin ? ', 눌러서 납부 확인' : ''}`} onClick={() => setPaid(m.name, true)} style={{ cursor: admin ? 'pointer' : 'default', font: 'inherit', fontSize: 12, fontWeight: 700, color: 'var(--fg)' }}>미납</button>
+              </div>))}
+            {admin && unpaid.length > 0 && <div className="mute" style={{ marginTop: 10 }}>미납 표시를 누르면 수동으로 납부 확인돼요. (통장 입금은 자동 체크)</div>}
+            {paidCnt > 0 && <div className="mute" style={{ marginTop: 10 }}>납부 완료: {club.members.filter((m) => paidNames.includes(m.name)).map((m) => m.name).join(', ')}</div>}
+          </div>
+        </div>)}
+
+      {sec === '통장내역' && (
+        <div>
+          <div className="card">
+            <b>모임통장</b>
+            {acct ? (
+              <div style={{ marginTop: 8 }}>
+                <div className="row"><span>{acct.bank} ****{acct.last4}</span><span className="tag ball">연결됨</span></div>
+                <div className="mute">예금주 {acct.holder}</div>
+                <div className="row" style={{ marginTop: 8 }}><span className="mute">현재 잔액</span><b style={big}>{won(net(tx))}</b></div>
+                {admin && <button className="btn" style={{ marginTop: 8 }} onClick={disconnect}>연결 해제</button>}
+              </div>
+            ) : admin ? (
+              <div style={{ marginTop: 8 }}>
+                <label>은행</label><select value={bank} onChange={(e) => setBank(e.target.value)}>{BANKS.map((b) => <option key={b}>{b}</option>)}</select>
+                <label>계좌번호</label><input inputMode="numeric" value={no} onChange={(e) => setNo(e.target.value)} placeholder="숫자만 입력 (뒤 4자리만 저장돼요)" />
+                <label>예금주</label><input value={holder} onChange={(e) => setHolder(e.target.value)} />
+                <button className="btn ball" onClick={connect}>모임통장 연결</button>
+              </div>
+            ) : <div className="mute" style={{ marginTop: 8 }}>연결된 모임통장이 없어요.</div>}
+          </div>
+          {acct && admin && (
+            <div className="card"><b>(시연) 통장 알림 받기</b>
+              <div className="mute" style={{ margin: '4px 0 8px' }}>실제 연동 전, 통장에 입금·출금이 생겼을 때의 동작을 미리 볼 수 있어요.</div>
+              <div className="grid2">
+                <select aria-label="입금자" value={inWho} onChange={(e) => setInWho(e.target.value)}>{club.members.map((m) => <option key={m.name}>{m.name}</option>)}</select>
+                <input aria-label="입금액" type="number" inputMode="numeric" value={inAmt} onChange={(e) => setInAmt(e.target.value)} />
+              </div>
+              <button className="btn" onClick={addIn}>입금 발생</button>
+              <div className="grid2" style={{ marginTop: 12 }}>
+                <select aria-label="지출 항목" value={outCat} onChange={(e) => setOutCat(e.target.value)}>{['공구입', '코트비', '회식', '기타'].map((x) => <option key={x}>{x}</option>)}</select>
+                <input aria-label="출금액" type="number" inputMode="numeric" placeholder="출금액" value={outAmt} onChange={(e) => setOutAmt(e.target.value)} />
+              </div>
+              <input aria-label="메모" placeholder="메모 (예: 테니스공 2박스)" value={outMemo} onChange={(e) => setOutMemo(e.target.value)} />
+              <button className="btn" onClick={addOut}>출금 발생</button>
+            </div>)}
+          <div className="card"><b>{+mo.slice(5)}월 거래내역</b>
+            <div style={{ marginTop: 8 }}>{mtx.length ? mtx.map(txRow) : <div className="mute">거래내역이 없어요.</div>}</div></div>
+        </div>)}
+
+      {sec === '명세서' && (
+        <div>
+          <div className="card"><b>{+mo.slice(5)}월 명세서</b> <span className="mute">· 모든 회원이 볼 수 있어요</span>
+            <div className="row" style={{ marginTop: 10 }}><span className="mute">전월 이월</span><span>{won(opening)}</span></div>
+            <div className="row"><span className="mute">입금 합계</span><b className="up">+{won(inSum)}</b></div>
+            <div className="row"><span className="mute">출금 합계</span><b className="down">-{won(outSum)}</b></div>
+            <div className="row" style={{ marginTop: 6 }}><b>월말 잔액</b><b style={big}>{won(opening + inSum - outSum)}</b></div>
+            <div className="row" style={{ marginTop: 6 }}><span className="mute">회비 납부</span><span>{paidCnt}/{total}명 ({rate}%)</span></div>
+          </div>
+          <div className="card"><b>거래 상세</b><div style={{ marginTop: 8 }}>{mtx.length ? mtx.map(txRow) : <div className="mute">거래내역이 없어요.</div>}</div></div>
+          <div className="card"><b>회원별 납부 내역 (6개월)</b>
+            <div style={{ overflowX: 'auto', marginTop: 8 }}>
+              <table style={{ whiteSpace: 'nowrap' }}>
+                <thead><tr><th className="mute" style={{ fontWeight: 400 }}>이름</th>{months.map((x) => <th key={x} className="mute" style={{ fontWeight: 400 }}>{+x.slice(5)}월</th>)}</tr></thead>
+                <tbody>{club.members.map((m) => (
+                  <tr key={m.name}><td><b>{m.name}</b></td>{months.map((x) => { const ok = (f.paid[x] || []).includes(m.name); return <td key={x} style={{ color: ok ? 'var(--win)' : 'var(--lose)', fontWeight: 700 }} aria-label={`${m.name} ${x} ${ok ? '납부' : '미납'}`}>{ok ? '✓' : '–'}</td>; })}</tr>))}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>)}
+
+      {sec === '알림' && (
+        <div className="card"><b>알림</b>
+          <div className="mute" style={{ margin: '4px 0 8px' }}>앱 안에서 보이는 알림이에요. 휴대폰 푸시 알림은 서버 연동 후에 보내져요.</div>
+          {auto.map((a) => <div key={a} style={{ padding: '6px 0', borderTop: '1px solid var(--line)' }}>🔔 {a}</div>)}
+          {alerts.map((a) => <div key={a.id} style={{ padding: '6px 0', borderTop: '1px solid var(--line)' }}><span className="mute">{a.date.slice(5)}</span> {a.text}</div>)}
+        </div>)}
     </div>
   );
 }
