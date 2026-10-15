@@ -5,6 +5,7 @@ import { TIERS } from '../lib/rating';
 import RankHelp from './RankHelp';
 import TierIcon from './TierIcon';
 import MatchDetail from './MatchDetail';
+import { Detail } from './Tournaments';
 
 const TIMES = Array.from({ length: 34 }, (_, i) => { const m = 360 + i * 30; return String(Math.floor(m / 60)).padStart(2, '0') + (m % 60 ? ':30' : ':00'); });
 const band = (t) => (t < '12' ? '오전' : t < '18' ? '오후' : '저녁');
@@ -52,12 +53,14 @@ function CreateForm({ onSubmit, onClose, club }) {
   );
 }
 
-export default function Matches({ me, setMe, posts, setPosts, clubId }) {
+export default function Matches({ me, setMe, posts, setPosts, clubId, tours, setTours }) {
   const [q, setQ] = useState(''), [kind, setKind] = useState(''), [date, setDate] = useState('');
   const [time, setTime] = useState(''), [area, setArea] = useState(''), [help, setHelp] = useState(false);
-  const [creating, setCreating] = useState(false), [openId, setOpenId] = useState(null);
+  const [creating, setCreating] = useState(false), [openId, setOpenId] = useState(null), [openTour, setOpenTour] = useState(null);
   const open = posts.find((p) => p.id === openId);
   if (open) return <MatchDetail post={open} me={me} setMe={setMe} setPosts={setPosts} onBack={() => setOpenId(null)} />;
+  const ot = (tours || []).find((t) => t.id === openTour);
+  if (ot) return <Detail t={ot} me={me} setMe={setMe} setTours={setTours} onBack={() => setOpenTour(null)} />;
 
   const list = posts.filter((p) => { const c = COURTS[p.court];
     return (clubId ? p.clubId === clubId : !p.clubId || p.public) && (!q || (p.court + c.addr).includes(q)) && (!kind || p.kind === kind) && (!date || p.date === date) && (!time || band(p.time) === time) && (!area || c.area === area); });
@@ -77,6 +80,11 @@ export default function Matches({ me, setMe, posts, setPosts, clubId }) {
       <button className="btn ball" aria-expanded={help} onClick={() => setHelp(!help)}>랭크 설명 {help ? '닫기' : '보기'}</button>
       {help && <RankHelp />}
       <div style={{ marginTop: 12 }}>
+        {!clubId && (tours || []).filter((t) => t.clubId && t.pubMatch && (!q || (t.name + t.place).includes(q))).map((t) => (
+          <div className="card" key={t.id} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => setOpenTour(t.id)} onKeyDown={(e) => e.key === 'Enter' && setOpenTour(t.id)}>
+            <div className="row"><b>{t.name}</b><span className="tag ball">월례대회</span></div>
+            <div className="mute">{t.place} · {t.date} {t.time}</div>
+          </div>))}
         {list.length === 0 && <div className="card mute">조건에 맞는 매칭이 없어요.</div>}
         {list.map((p) => {
           const isHost = p.host.name === ME, acc = p.accepted.some((a) => a.name === ME), wait = p.waiting.some((a) => a.name === ME);

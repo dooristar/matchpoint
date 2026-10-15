@@ -44,7 +44,7 @@ function Stars({ value, onChange, label, max = 5, size = 28 }) {
 }
 
 export default function Profile({ me, setMe }) {
-  const [rec, setRec] = useState('일반');
+  const [rec, setRec] = useState('일반'), [mode, setMode] = useState('통합');
   const received = me.received || [];
   const avg = (get) => (received.length ? Math.round((received.reduce((a, e) => a + get(e), 0) / received.length) * 10) / 10 : null);
   const baseSkills = { ...DEFAULT_SKILLS, ...(me.skills || {}) };
@@ -56,12 +56,12 @@ export default function Profile({ me, setMe }) {
   const setSkill = (k, v) => { if (!received.length) setMe({ ...me, skills: { ...baseSkills, [k]: v } }); };
   const toggleStyle = (s) => setMe({ ...me, styles: styles.includes(s) ? styles.filter((x) => x !== s) : [...styles, s] });
 
-  const fmt = (r) => `${r.g}전 ${r.w}승 ${r.g - r.w}패`;
   const log = me.matchLog || [];
-  const recs = {};
-  Object.keys(RECORDS).forEach((k) => { const l = log.filter((m) => m.kind === k); recs[k] = { g: RECORDS[k].g + l.length, w: RECORDS[k].w + l.filter((m) => m.win).length }; });
-  const total = Object.values(recs).reduce((a, r) => ({ g: a.g + r.g, w: a.w + r.w }), { g: 0, w: 0 });
-  const cur = recs[rec];
+  const stat = (arr) => { const w = arr.filter((x) => x.win).length; return `${arr.length}전 ${w}승 ${arr.length - w}패`; };
+  const isSingle = (x) => (x.format || '단식') === '단식';
+  const rows = log.filter((x) => x.kind === rec && (mode === '통합' || (mode === '단식' ? isSingle(x) : !isSingle(x))));
+  const rate = rows.length ? Math.round((rows.filter((x) => x.win).length / rows.length) * 100) : 0;
+  const dateOf = (ts) => { const d = new Date(ts); return `${d.getMonth() + 1}/${d.getDate()}`; };
   const infoRow = { marginBottom: 6, fontSize: 14 };
   const t = TIERS[me.tier];
 
@@ -128,14 +128,26 @@ export default function Profile({ me, setMe }) {
       <div className="card">
         <div className="row" style={{ flexWrap: 'wrap' }}>
           <b>전적</b>
-          <span>통산전적 <b>{fmt(total)}</b></span>
+          <span>통산전적 <b>{stat(log)}</b></span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, margin: '10px 0' }}>
-          {Object.keys(RECORDS).map((k) => (
+        <div className="mute">단식 {stat(log.filter(isSingle))} · 복식 {stat(log.filter((x) => !isSingle(x)))}</div>
+        <div className="grid3" style={{ margin: '10px 0 8px' }}>
+          {['통합', '단식', '복식'].map((k) => <button key={k} className={'btn' + (mode === k ? ' ball' : '')} aria-pressed={mode === k} onClick={() => setMode(k)}>{k}</button>)}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, margin: '0 0 10px' }}>
+          {['일반', '랭크', '클럽', '대회'].map((k) => (
             <button key={k} className={'btn' + (rec === k ? ' ball' : '')} aria-pressed={rec === k} onClick={() => setRec(k)}>{k}</button>
           ))}
         </div>
-        <div>{rec} 전적 · <b>{fmt(cur)}</b> <span className="mute">· 승률 {Math.round((cur.w / cur.g) * 100)}%</span></div>
+        <div>{rec} {mode} · <b>{stat(rows)}</b> <span className="mute">· 승률 {rate}%</span></div>
+        <div style={{ marginTop: 8 }}>
+          {rows.length === 0 && <div className="mute">아직 경기 기록이 없어요.</div>}
+          {rows.slice().reverse().map((x, i) => (
+            <div className="row" key={(x.id || '') + i} style={{ padding: '6px 0', borderTop: '1px solid var(--line)', alignItems: 'flex-start' }}>
+              <span style={{ minWidth: 0 }}><span className="mute">{dateOf(x.ts)}</span> {(x.a || ['나']).join(', ')} <b>{x.sa == null ? '' : x.sa}</b> vs <b>{x.sb == null ? '' : x.sb}</b> {(x.b || ['상대']).join(', ')}</span>
+              <b className={x.win ? 'up' : 'down'} style={{ flex: 'none' }}>{x.win ? '승' : '패'}</b>
+            </div>))}
+        </div>
       </div>
 
       {/* 평가 */}

@@ -350,7 +350,7 @@ export default function Club({ me, setMe, clubs, setClubs, posts, setPosts, tour
           {sub === '클럽프로필' && <Info key={club.id} club={club} upd={u} admin={admin} me={me} />}
           {sub === '공지' && <Notices key={club.id} club={club} upd={u} isMember />}
           {sub === '정모매칭' && <Matches key={club.id} me={me} setMe={setMe} posts={posts} setPosts={setPosts} clubId={club.id} />}
-          {sub === '월례대회' && <Tournaments key={club.id} tours={tours} setTours={setTours} me={me} clubId={club.id} club={club} />}
+          {sub === '월례대회' && <Tournaments key={club.id} tours={tours} setTours={setTours} me={me} setMe={setMe} clubId={club.id} club={club} onMvp={(t, nm) => u((cc) => ({ ...cc, achievements: [...cc.achievements, `${t.date.slice(0, 7)} ${t.name} MVP: ${nm}`] }))} />}
           {sub === '클럽랭킹' && <RankTab key={club.id} club={club} upd={u} admin={admin} />}
           {sub === '회비' && <Fees key={club.id} club={club} upd={u} admin={admin} />}
           {sub === '사진첩' && <div className="card"><span className="tag ball">개발 예정</span><p style={{ margin: '8px 0 0' }}>추후 업데이트</p></div>}
@@ -358,7 +358,7 @@ export default function Club({ me, setMe, clubs, setClubs, posts, setPosts, tour
       );
     }
   } else if (top === '클럽교류전') {
-    body = <Tournaments tours={tours} setTours={setTours} me={me} exchange />;
+    body = <Tournaments tours={tours} setTours={setTours} me={me} setMe={setMe} exchange />;
   } else if (viewed) {
     body = (
       <div>

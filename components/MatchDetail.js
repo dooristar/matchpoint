@@ -36,7 +36,7 @@ export default function MatchDetail({ post: p, me, setMe, setPosts, onBack }) {
   const joined = isHost || isAcc, full = p.accepted.length >= p.cap;
   const people = [p.host, ...p.accepted], others = people.filter((x) => x.name !== ME);
   const blocked = p.kind === '랭크' && !(me.tier >= p.lo && me.tier <= p.hi);
-  const [wv, setWv] = useState('1'), [opps, setOpps] = useState([]), [evTarget, setEvTarget] = useState(null);
+  const [wv, setWv] = useState('1'), [opps, setOpps] = useState([]), [evTarget, setEvTarget] = useState(null), [sc, setSc] = useState(['', '']);
 
   const accept = (w) => { if (!full) upd((x) => ({ ...x, waiting: x.waiting.filter((n) => n.name !== w.name), accepted: [...x.accepted, w] })); };
   const reject = (w) => upd((x) => ({ ...x, waiting: x.waiting.filter((n) => n.name !== w.name) }));
@@ -53,7 +53,7 @@ export default function MatchDetail({ post: p, me, setMe, setPosts, onBack }) {
   const submitResult = () => {
     const o = p.format === '단식' ? others.map((x) => x.name) : opps;
     if (!o.length) { alert('상대를 선택해 주세요'); return; }
-    upd((x) => ({ ...x, result: { win: wv === '1', opps: o, confirmed: [], final: false, gain: null } }));
+    upd((x) => ({ ...x, result: { win: wv === '1', opps: o, score: sc.map((v) => (v === '' ? null : +v)), confirmed: [], final: false, gain: null } }));
   };
   const confirm = (name) => {
     const confirmed = [...p.result.confirmed, name];
@@ -66,7 +66,7 @@ export default function MatchDetail({ post: p, me, setMe, setPosts, onBack }) {
       const r = next.matches[next.matches.length - 1];
       gain = { delta: r.delta, note: r.note };
     }
-    setMe({ ...next, matchLog: [...(next.matchLog || []), { id: p.id, kind: p.kind, win, format: p.format, ts: Date.now() }] });
+    setMe({ ...next, matchLog: [...(next.matchLog || []), { id: p.id, kind: p.clubId ? '클럽' : p.kind, win, format: p.result.opps.length > 1 ? '복식' : '단식', a: [ME, ...others.map((x) => x.name).filter((nm) => !p.result.opps.includes(nm))], b: p.result.opps, sa: (p.result.score || [])[0], sb: (p.result.score || [])[1], ts: Date.now() }] });
     upd((x) => ({ ...x, result: { ...x.result, confirmed, final: true, gain } }));
   };
   const rnd = () => 3 + Math.floor(Math.random() * 3);
@@ -121,6 +121,10 @@ export default function MatchDetail({ post: p, me, setMe, setPosts, onBack }) {
           <div className="grid2" style={{ marginTop: 8 }}>
             <button className={'btn' + (wv === '1' ? ' ball' : '')} aria-pressed={wv === '1'} onClick={() => setWv('1')}>승리</button>
             <button className={'btn' + (wv === '0' ? ' ball' : '')} aria-pressed={wv === '0'} onClick={() => setWv('0')}>패배</button>
+          </div>
+          <div className="grid2" style={{ marginTop: 8 }}>
+            <input aria-label="내 게임 수" type="number" inputMode="numeric" min="0" placeholder="내 쪽 게임 수 (선택)" value={sc[0]} onChange={(e) => setSc([e.target.value, sc[1]])} style={{ margin: 0 }} />
+            <input aria-label="상대 게임 수" type="number" inputMode="numeric" min="0" placeholder="상대 쪽 게임 수 (선택)" value={sc[1]} onChange={(e) => setSc([sc[0], e.target.value])} style={{ margin: 0 }} />
           </div>
           {p.format !== '단식' && (
             <div style={{ marginTop: 8 }}><div className="mute">상대 선택</div>
