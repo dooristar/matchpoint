@@ -97,7 +97,7 @@ function CreateTour({ club, onSubmit, onClose }) {
           <label>시상</label><input value={f.prize} onChange={set('prize')} placeholder="예) 우승 상품권, 준우승 음료권" />
           <div className="mute" style={{ margin: '4px 0' }}>공개</div>
           <label style={chk}><input type="checkbox" style={cbx} checked={f.pubExchange} onChange={(e) => setF({ ...f, pubExchange: e.target.checked })} />클럽교류전</label>
-          <label style={{ ...chk, marginBottom: 10 }}><input type="checkbox" style={cbx} checked={f.pubMatch} onChange={(e) => setF({ ...f, pubMatch: e.target.checked })} />일반/랭크 매칭</label>
+          <label style={{ ...chk, marginBottom: 10 }}><input type="checkbox" style={cbx} checked={f.pubMatch} onChange={(e) => setF({ ...f, pubMatch: e.target.checked })} />매칭</label>
           <button className="btn ball" style={{ width: '100%' }} onClick={submit}>완료</button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { AREAS, COURTS, ME } from '../lib/data';
 import { ntrp } from '../lib/rating';
 import Matches from './Matches';
 import Tournaments from './Tournaments';
+import { TRIGGERS, seasonKey, liveSeasons, seasonRows, yearTotals } from '../lib/clubstats';
 
 const pad = (n) => String(n).padStart(2, '0');
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
@@ -29,10 +30,10 @@ function AddLine({ label, onAdd }) {
   );
 }
 
-function Info({ club, upd, admin, me }) {
+function Info({ club, upd, admin, me, posts, tours }) {
   const [add, setAdd] = useState(false), [f, setF] = useState({ name: '', birth: '', career: '', ntrp: 3.0, joined: today().slice(0, 7) });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  const yr = tally(club, (l) => l.date.startsWith(today().slice(0, 4))), rankOf = Object.fromEntries(yr.map(([n], i) => [n, i + 1]));
+  const rankOf = Object.fromEntries(yearTotals(club, posts || [], tours || []).map((r, i) => [r.name, i + 1]));
   const addMember = () => { if (!f.name.trim()) { alert('이름을 입력해 주세요'); return; } upd((c) => ({ ...c, members: [...c.members, { ...f, name: f.name.trim(), ntrp: +f.ntrp }] })); setAdd(false); setF({ ...f, name: '', birth: '', career: '' }); };
   return (
     <div>
@@ -99,36 +100,80 @@ function Notices({ club, upd, isMember }) {
   );
 }
 
-function RankTab({ club, upd, admin }) {
-  const y = today().slice(0, 4), [q, setQ] = useState(quarter(today()));
-  const [mem, setMem] = useState(''), [rid, setRid] = useState(''), [rn, setRn] = useState(''), [rp, setRp] = useState(10);
-  const season = tally(club, (l) => l.date.startsWith(y) && quarter(l.date) === q), year = tally(club, (l) => l.date.startsWith(y));
-  const award = () => { const member = mem || club.members[0]?.name, ruleId = +rid || club.rankRules[0]?.id; if (!member || !ruleId) return; upd((c) => ({ ...c, rankLog: [...c.rankLog, { id: Date.now(), member, ruleId, date: today() }] })); };
-  const addRule = () => { if (!rn.trim()) return; upd((c) => ({ ...c, rankRules: [...c.rankRules, { id: Date.now(), name: rn.trim(), pts: +rp }] })); setRn(''); };
-  const medal = ['🥇', '🥈', '🥉'];
+const MEDAL = ['🥇', '🥈', '🥉'];
+const HILITE = ['rgba(230,184,0,.18)', 'rgba(174,183,192,.25)', 'rgba(176,122,69,.22)'];
+const POD = [{ i: 1, h: 92, bg: 'linear-gradient(180deg,#e3e8ec,#aab4be)' }, { i: 0, h: 118, bg: 'linear-gradient(180deg,#ffe685,#e6b800)', glow: true }, { i: 2, h: 78, bg: 'linear-gradient(180deg,#e8c19a,#b07a45)' }];
+const kname = (k, cur) => `${k.slice(0, 4)}년 ${k.slice(5)}분기${k === cur ? ' (진행 중)' : ''}`;
+
+function RankTab({ club, upd, admin, posts, tours }) {
+  const now = today(), cur = seasonKey(now);
+  const live = liveSeasons(club, posts || [], tours || []);
+  const keys = [...new Set([...(club.history || []).map((h) => `${h.y}-${h.q}`), ...Object.keys(live), cur])].sort().reverse();
+  const [key, setKey] = useState(cur), [tr, setTr] = useState('win'), [rp, setRp] = useState(10), [rn, setRn] = useState('');
+  const rows = seasonRows(club, live, key), maxG = Math.max(0, ...rows.map((r) => r.games)), kings = rows.filter((r) => r.games === maxG && maxG > 0);
+  const podium = rows.filter((r) => r.pts > 0).slice(0, 3), yr = yearTotals(club, posts || [], tours || []);
+  const rules = club.rankRules || [], trLabel = (t) => (TRIGGERS.find((x) => x[0] === t) || [0, '직접 입력'])[1];
+  const addRule = () => { const label = trLabel(tr).replace(/ \(.*\)/, ''); upd((c) => ({ ...c, rankRules: [...c.rankRules, { id: Date.now(), name: rn.trim() || label, trigger: tr, pts: +rp }] })); setRn(''); };
+  const delRule = (id) => upd((c) => ({ ...c, rankRules: c.rankRules.filter((r) => r.id !== id) }));
   return (
     <div>
-      <div className="card"><b>점수 획득방법</b>
-        {club.rankRules.map((r) => <div className="row" key={r.id} style={{ marginTop: 6 }}><span>{r.name}</span><b className="up">+{r.pts}</b></div>)}
-        {admin && <div style={{ marginTop: 10 }}><div className="grid2"><input aria-label="방법 이름" placeholder="예) 월례대회 참가" value={rn} onChange={(e) => setRn(e.target.value)} style={{ margin: 0 }} />
-          <select aria-label="점수" value={rp} onChange={(e) => setRp(e.target.value)} style={{ margin: 0 }}>{[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((n) => <option key={n} value={n}>+{n}점</option>)}</select></div>
-          <button className="btn" style={{ marginTop: 8 }} onClick={addRule}>＋ 점수 방법 추가</button></div>}
+      <div className="card"><b>점수 방법</b>
+        <div className="mute" style={{ margin: '2px 0 6px' }}>운영진이 정한 기준으로 정모매칭·월례대회 기록에서 점수가 자동으로 쌓여요.</div>
+        {rules.length === 0 && <div className="mute">아직 점수 방법이 없어요.</div>}
+        {rules.map((r) => (
+          <div className="row" key={r.id} style={{ marginTop: 6 }}>
+            <span>{r.name} <span className="mute">· {trLabel(r.trigger)}</span></span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><b className="up">+{r.pts}</b>{admin && <button type="button" aria-label={`${r.name} 삭제`} onClick={() => delRule(r.id)} style={{ border: 0, background: 'none', color: 'var(--lose)', cursor: 'pointer', fontSize: 16 }}>✕</button>}</span>
+          </div>))}
+        {admin && (
+          <div style={{ marginTop: 12 }}>
+            <div className="grid2">
+              <select aria-label="점수 기준" value={tr} onChange={(e) => setTr(e.target.value)} style={{ margin: 0 }}>{TRIGGERS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+              <select aria-label="점수" value={rp} onChange={(e) => setRp(e.target.value)} style={{ margin: 0 }}>{[10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((n) => <option key={n} value={n}>+{n}점</option>)}</select>
+            </div>
+            <input aria-label="점수 방법 이름" placeholder="이름 (선택, 비우면 기준 이름)" value={rn} onChange={(e) => setRn(e.target.value)} style={{ marginTop: 8 }} />
+            <button className="btn" onClick={addRule}>＋ 점수 방법 추가</button>
+          </div>)}
       </div>
-      {admin && club.rankRules.length > 0 && (
-        <div className="card"><b>점수 부여</b>
-          <div className="grid2" style={{ marginTop: 6 }}>
-            <select aria-label="회원" value={mem} onChange={(e) => setMem(e.target.value)}>{club.members.map((m) => <option key={m.name}>{m.name}</option>)}</select>
-            <select aria-label="방법" value={rid} onChange={(e) => setRid(e.target.value)}>{club.rankRules.map((r) => <option key={r.id} value={r.id}>{r.name} (+{r.pts})</option>)}</select>
-          </div>
-          <button className="btn ball" onClick={award}>점수 부여</button>
-        </div>)}
-      <div className="card"><div className="row"><b>시즌 랭킹 (분기)</b>
-        <select aria-label="분기" value={q} onChange={(e) => setQ(+e.target.value)} style={{ width: 'auto', margin: 0 }}>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{y}년 {n}분기</option>)}</select></div>
-        {season.slice(0, 3).map(([n, p], i) => <div className="row" key={n} style={{ marginTop: 8 }}><span>{medal[i]} <b>{n}</b></span><b>{p}점</b></div>)}
-        {season.every(([, p]) => p === 0) && <div className="mute" style={{ marginTop: 6 }}>이 분기에 쌓인 점수가 없어요.</div>}
+
+      <div className="card"><b>시즌 랭킹 (분기)</b>
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', margin: '8px 0', paddingBottom: 4 }}>
+          {keys.map((k) => <button key={k} className={'btn' + (key === k ? ' ball' : '')} style={{ flex: 'none', fontSize: 13 }} aria-pressed={key === k} onClick={() => setKey(k)}>{kname(k, cur)}</button>)}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, margin: '14px 0 4px' }}>
+          {POD.map(({ i, h, bg, glow }) => { const r = podium[i]; return (
+            <div key={i} style={{ flex: 1, textAlign: 'center' }}>
+              {r && i === 0 && <div style={{ fontSize: 26, lineHeight: 1 }} aria-hidden="true">👑</div>}
+              <div style={{ height: h, background: r ? bg : 'var(--line)', borderRadius: '12px 12px 0 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 4, color: r ? '#1c1400' : 'var(--mute)', boxShadow: r && glow ? '0 0 18px rgba(230,184,0,.55)' : 'none' }}>
+                <span style={{ fontSize: i === 0 ? 30 : 24 }} aria-hidden="true">{MEDAL[i]}</span>
+                <b style={{ fontSize: 14 }}>{r ? r.name : '-'}</b>
+                <span style={{ fontSize: 12 }}>{r ? `${r.pts}점` : ''}</span>
+              </div>
+            </div>); })}
+        </div>
+        {podium.length === 0 && <div className="mute" style={{ textAlign: 'center' }}>이 시즌에 쌓인 점수가 없어요.</div>}
+        {kings.length > 0 && (
+          <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, background: 'linear-gradient(90deg,#d9480f,#a61e4d)', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <span><b>🔥 출석왕</b> {kings.map((k) => k.name).join(', ')}</span><b style={{ flex: 'none' }}>{maxG}게임</b>
+          </div>)}
+        <div style={{ overflowX: 'auto', marginTop: 12 }}>
+          <table style={{ whiteSpace: 'nowrap' }}>
+            <thead><tr>{['순위', '이름', '게임수', '승', '패', '랭킹점수'].map((h) => <th key={h} className="mute" style={{ fontWeight: 400 }}>{h}</th>)}</tr></thead>
+            <tbody>{rows.map((r, i) => {
+              const top = i < 3 && r.pts > 0;
+              return (
+                <tr key={r.name} style={{ background: top ? HILITE[i] : 'transparent' }}>
+                  <td style={{ fontSize: top ? 18 : 14 }}>{top ? MEDAL[i] : i + 1}</td>
+                  <td><b>{r.name}</b>{kings.some((k) => k.name === r.name) && <span className="tag ball" style={{ marginLeft: 6 }}>출석왕</span>}</td>
+                  <td>{r.games}</td><td>{r.w}</td><td>{r.l}</td><td><b>{r.pts}</b></td>
+                </tr>); })}</tbody>
+          </table>
+        </div>
+        <div className="mute" style={{ marginTop: 6 }}>전체 회원 {rows.length}명 · 출석왕은 시즌 게임수가 가장 많은 회원이에요.</div>
       </div>
-      <div className="card"><b>{y}년 MVP (4시즌 통합)</b>
-        {year[0] && year[0][1] > 0 ? <div style={{ marginTop: 8, fontSize: 18 }}>👑 <b>{year[0][0]}</b> <span className="mute">{year[0][1]}점</span></div> : <div className="mute" style={{ marginTop: 6 }}>아직 없어요.</div>}
+
+      <div className="card"><b>{new Date().getFullYear()}년 MVP (4시즌 통합)</b>
+        {yr[0] && yr[0].pts > 0 ? <div style={{ marginTop: 8, fontSize: 18 }}>👑 <b>{yr[0].name}</b> <span className="mute">{yr[0].pts}점</span></div> : <div className="mute" style={{ marginTop: 6 }}>아직 없어요.</div>}
       </div>
     </div>
   );
@@ -332,7 +377,7 @@ export default function Club({ me, setMe, clubs, setClubs, posts, setPosts, tour
   const join = (c) => setClubs(clubs.map((x) => (x.id === c.id ? { ...x, members: [...x.members, me0] } : x)));
   const create = (f) => {
     const id = 'c' + Date.now();
-    setClubs([{ id, ...f, admin: ME, court: Object.keys(COURTS)[0], meetDay: '토', rules: [], achievements: [], members: [me0], notices: [], rankRules: [], rankLog: [], fees: { amount: 20000, paid: {} } }, ...clubs]);
+    setClubs([{ id, ...f, admin: ME, court: Object.keys(COURTS)[0], meetDay: '토', rules: [], achievements: [], members: [me0], notices: [], rankRules: [{ id: 1, name: '경기 참여', trigger: 'game', pts: 5 }, { id: 2, name: '경기 승리', trigger: 'win', pts: 10 }, { id: 3, name: '정모 참석', trigger: 'attend', pts: 10 }], history: [], fees: { amount: 20000, paid: {} } }, ...clubs]);
     setCreating(false); setCurId(id); setSub('클럽프로필'); setTop('내클럽');
   };
 
@@ -347,11 +392,11 @@ export default function Club({ me, setMe, clubs, setClubs, posts, setPosts, tour
           <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 12, paddingBottom: 4 }}>
             {SUBS.map((s) => <button key={s} className={'btn' + (sub === s ? ' ball' : '')} style={{ flex: 'none' }} aria-pressed={sub === s} onClick={() => setSub(s)}>{s}</button>)}
           </div>
-          {sub === '클럽프로필' && <Info key={club.id} club={club} upd={u} admin={admin} me={me} />}
+          {sub === '클럽프로필' && <Info key={club.id} club={club} upd={u} admin={admin} me={me} posts={posts} tours={tours} />}
           {sub === '공지' && <Notices key={club.id} club={club} upd={u} isMember />}
           {sub === '정모매칭' && <Matches key={club.id} me={me} setMe={setMe} posts={posts} setPosts={setPosts} clubId={club.id} />}
           {sub === '월례대회' && <Tournaments key={club.id} tours={tours} setTours={setTours} me={me} setMe={setMe} clubId={club.id} club={club} onMvp={(t, nm) => u((cc) => ({ ...cc, achievements: [...cc.achievements, `${t.date.slice(0, 7)} ${t.name} MVP: ${nm}`] }))} />}
-          {sub === '클럽랭킹' && <RankTab key={club.id} club={club} upd={u} admin={admin} />}
+          {sub === '클럽랭킹' && <RankTab key={club.id} club={club} upd={u} admin={admin} posts={posts} tours={tours} />}
           {sub === '회비' && <Fees key={club.id} club={club} upd={u} admin={admin} />}
           {sub === '사진첩' && <div className="card"><span className="tag ball">개발 예정</span><p style={{ margin: '8px 0 0' }}>추후 업데이트</p></div>}
         </div>
@@ -364,7 +409,7 @@ export default function Club({ me, setMe, clubs, setClubs, posts, setPosts, tour
       <div>
         <div className="row" style={{ marginBottom: 10 }}><button className="btn" onClick={() => setViewId(null)}>← 클럽 목록</button>
           {mine(viewed) ? <span className="tag ball">가입됨</span> : <button className="btn ball" onClick={() => join(viewed)}>가입</button>}</div>
-        <Info key={viewed.id} club={viewed} upd={upd(viewed.id)} admin={viewed.admin === ME} me={me} />
+        <Info key={viewed.id} club={viewed} upd={upd(viewed.id)} admin={viewed.admin === ME} me={me} posts={posts} tours={tours} />
       </div>
     );
   } else {

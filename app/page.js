@@ -15,9 +15,9 @@ import { SEED_TOURS } from '../lib/tournaments';
 import { SEED_CLUBS } from '../lib/clubs';
 
 // 상단 메뉴 / 하단 메뉴
-const TOP = [['match', '일반/랭크 매칭'], ['club', '클럽'], ['tour', '대회'], ['lesson', '(추후)레슨/대관'], ['market', '(추후)마켓']];
+const TOP = [['match', '매칭'], ['club', '클럽'], ['tour', '대회'], ['lesson', '(추후)레슨/대관'], ['market', '(추후)마켓']];
 const BOT = [['profile', '프로필정보'], ['mission', '미션'], ['chat', '채팅'], ['ask', '문의']];
-const KEYS = { me: 'court-mate-dev', posts: 'court-mate-posts-v2', tours: 'court-mate-tours-v3', clubs: 'court-mate-clubs-v2', chats: 'court-mate-chats-v1' };
+const KEYS = { me: 'court-mate-dev', posts: 'court-mate-posts-v2', tours: 'court-mate-tours-v3', clubs: 'court-mate-clubs-v3', chats: 'court-mate-chats-v1' };
 
 export default function Page() {
   const [tab, setTab] = useState('match');

@@ -45,7 +45,7 @@ function CreateForm({ onSubmit, onClose, club }) {
           <label>매칭 메모 ({f.memo.length}/100)</label>
           <textarea value={f.memo} maxLength={100} rows={3} onChange={set('memo')} placeholder="자유롭게 적어 주세요"
             style={{ width: '100%', font: 'inherit', padding: 10, border: '1px solid var(--line)', borderRadius: 10, background: 'var(--bg)', color: 'var(--fg)', marginBottom: 10 }} />
-          {club && <label style={{ display: 'block', color: 'var(--fg)', fontSize: 14, marginBottom: 10 }}><input type="checkbox" style={{ width: 'auto', margin: '0 6px 0 0' }} checked={f.public} onChange={(e) => setF({ ...f, public: e.target.checked })} />공개 (일반/랭크 매칭 목록에도 표시)</label>}
+          {club && <label style={{ display: 'block', color: 'var(--fg)', fontSize: 14, marginBottom: 10 }}><input type="checkbox" style={{ width: 'auto', margin: '0 6px 0 0' }} checked={f.public} onChange={(e) => setF({ ...f, public: e.target.checked })} />공개 (매칭 목록에도 표시)</label>}
           <button className="btn ball" style={{ width: '100%' }} onClick={submit}>완료</button>
         </div>
       </div>
@@ -69,7 +69,7 @@ export default function Matches({ me, setMe, posts, setPosts, clubId, tours, set
 
   return (
     <div>
-      <h1>{clubId ? '정모 매칭' : '일반 / 랭크 매칭'}</h1>
+      <h1>매칭</h1>
       <input placeholder="검색 (코트명, 주소)" value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="grid2">
         <select value={kind} onChange={(e) => setKind(e.target.value)}><option value="">일반/랭크 전체</option><option>일반</option><option>랭크</option></select>
@@ -77,7 +77,7 @@ export default function Matches({ me, setMe, posts, setPosts, clubId, tours, set
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         <select value={time} onChange={(e) => setTime(e.target.value)}><option value="">시간 전체</option><option>오전</option><option>오후</option><option>저녁</option></select>
       </div>
-      <button className="btn ball" aria-expanded={help} onClick={() => setHelp(!help)}>랭크 설명 {help ? '닫기' : '보기'}</button>
+      <button className="btn ball" aria-expanded={help} onClick={() => setHelp(!help)}>NTRP 설명 {help ? '닫기' : '보기'}</button>
       {help && <RankHelp />}
       <div style={{ marginTop: 12 }}>
         {!clubId && (tours || []).filter((t) => t.clubId && t.pubMatch && (!q || (t.name + t.place).includes(q))).map((t) => (
