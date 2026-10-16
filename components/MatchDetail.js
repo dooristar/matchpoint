@@ -4,27 +4,72 @@ import { COURTS, ME, NAMES } from '../lib/data';
 import { TIERS, applyResult } from '../lib/rating';
 import TierIcon from './TierIcon';
 import Stars from './Stars';
+import { SKILLS, M_ITEMS, ntrpOfScore, levelOf } from '../lib/skills';
 
-const R_ITEMS = [['level', '실력수준'], ['manner', '매너'], ['time', '시간약속'], ['attitude', '경기태도'], ['rematch', '재경기의향']];
-const S_ITEMS = ['스트로크', '서브', '발리', '무브먼트', '운영', '매너'];
 const careerText = (c) => (c >= 10 ? '10년 이상' : `${c}년 이상`);
 
-// 상호평가: 1단계(5항목) → 다음 → 2단계(능력치 6항목) → 완료
+// 상호평가 3단계: 1) 안내·신고 → 2) 기술/실력(NTRP) 슬라이더 → 3) 매너/태도
+const CSS = `.energy{-webkit-appearance:none;appearance:none;width:100%;height:14px;border-radius:99px;outline:none;margin:8px 0 2px;border:0;padding:0;cursor:pointer}
+.energy::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;border:3px solid var(--court);box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.energy::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:3px solid var(--court);box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.energy:focus-visible{outline:3px solid var(--ball);outline-offset:3px}`;
+
 function EvalForm({ name, onDone }) {
-  const [step, setStep] = useState(1);
-  const [r, setR] = useState({ level: 3, manner: 3, time: 3, attitude: 3, rematch: 3 });
-  const [s, setS] = useState(Object.fromEntries(S_ITEMS.map((k) => [k, 3])));
-  const rows = step === 1 ? R_ITEMS : S_ITEMS.map((k) => [k, k]);
-  const val = step === 1 ? r : s, set = step === 1 ? setR : setS;
+  const [step, setStep] = useState(1), [focus, setFocus] = useState(SKILLS[0].k), [rep, setRep] = useState({ noshow: false, rude: false });
+  const [s, setS] = useState(Object.fromEntries(SKILLS.map((x) => [x.k, 10])));
+  const [m, setM] = useState(Object.fromEntries(M_ITEMS.map((k) => [k, 3])));
+  const report = (k, label) => { if (rep[k] || !confirm(`${name} 님을 ${label}로 신고할까요?`)) return; setRep({ ...rep, [k]: true }); };
   return (
     <div className="card">
-      <b>{name} 님 평가 ({step}/2)</b>
-      {rows.map(([k, t]) => (
-        <div className="row" key={k} style={{ marginTop: 6 }}><span>{t}</span><Stars value={val[k]} onChange={(v) => set({ ...val, [k]: v })} label={t} /></div>
-      ))}
-      <div className="row" style={{ marginTop: 12 }}>
-        {step === 2 ? <button className="btn" onClick={() => setStep(1)}>이전</button> : <span />}
-        <button className="btn ball" onClick={() => (step === 1 ? setStep(2) : onDone({ r, s }))}>{step === 1 ? '다음' : '완료'}</button>
+      <style>{CSS}</style>
+      <b>{name} 님 평가 ({step}/3)</b>
+
+      {step === 1 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ padding: 12, borderRadius: 12, background: 'var(--bg)', border: '1px solid var(--line)' }}>
+            🔒 <b>익명성 보장</b><div style={{ marginTop: 4 }}>내가 매긴 평점은 상대방에게 개인별로 공개되지 않고, 누적 평균 스탯으로만 반영돼요.</div>
+          </div>
+          <div className="mute" style={{ margin: '12px 0 6px' }}>문제가 있었나요?</div>
+          <div className="grid2">
+            <button className="btn" style={{ background: rep.noshow ? 'var(--mute)' : 'var(--lose)' }} disabled={rep.noshow} onClick={() => report('noshow', '노쇼')}>{rep.noshow ? '노쇼 신고 접수됨' : '노쇼 신고'}</button>
+            <button className="btn" style={{ background: rep.rude ? 'var(--mute)' : 'var(--lose)' }} disabled={rep.rude} onClick={() => report('rude', '비매너')}>{rep.rude ? '비매너 신고 접수됨' : '비매너 신고'}</button>
+          </div>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div style={{ marginTop: 6 }}>
+          <div className="mute">NTRP 평가 · 슬라이더를 움직이면 항목 설명이 나와요 (1~20점)</div>
+          {SKILLS.map((x) => {
+            const v = s[x.k], pct = ((v - 1) / 19) * 100, on = focus === x.k, n = ntrpOfScore(v), lv = levelOf(n);
+            return (
+              <div key={x.k} style={{ marginTop: 14 }}>
+                <div className="row">
+                  <button type="button" aria-expanded={on} onClick={() => setFocus(x.k)} style={{ border: 0, background: 'none', font: 'inherit', fontWeight: 700, color: 'var(--fg)', cursor: 'pointer', padding: 0, textAlign: 'left' }}>{x.k.replace('&', ' & ')}</button>
+                  <b>{v}<span className="mute" style={{ fontWeight: 400 }}>/20</span></b>
+                </div>
+                <input type="range" className="energy" min="1" max="20" step="1" value={v} aria-label={`${x.k} 점수`} onFocus={() => setFocus(x.k)} onPointerDown={() => setFocus(x.k)}
+                  onChange={(e) => setS({ ...s, [x.k]: +e.target.value })} style={{ background: `linear-gradient(90deg, var(--ball) ${pct}%, var(--line) ${pct}%)` }} />
+                {on && (
+                  <div style={{ padding: '8px 10px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--line)', fontSize: 13 }}>
+                    <b>{x.title}</b>: {x.desc}
+                    <div className="mute" style={{ marginTop: 4 }}>지금 선택: NTRP {n.toFixed(1)} · {lv[1]} — {lv[2]}</div>
+                  </div>)}
+              </div>);
+          })}
+        </div>
+      )}
+
+      {step === 3 && (
+        <div style={{ marginTop: 6 }}>
+          <div className="mute">매너/태도 평가 (1~5점)</div>
+          {M_ITEMS.map((k) => <div className="row" key={k} style={{ marginTop: 8 }}><span>{k}</span><Stars value={m[k]} onChange={(v) => setM({ ...m, [k]: v })} label={k} /></div>)}
+        </div>
+      )}
+
+      <div className="row" style={{ marginTop: 14 }}>
+        {step > 1 ? <button className="btn" onClick={() => setStep(step - 1)}>이전</button> : <span />}
+        <button className="btn ball" onClick={() => (step < 3 ? setStep(step + 1) : onDone({ s, m, report: rep }))}>{step < 3 ? '다음' : '완료'}</button>
       </div>
     </div>
   );
@@ -69,9 +114,9 @@ export default function MatchDetail({ post: p, me, setMe, setPosts, onBack }) {
     setMe({ ...next, matchLog: [...(next.matchLog || []), { id: p.id, kind: p.clubId ? '클럽' : p.kind, win, format: p.result.opps.length > 1 ? '복식' : '단식', a: [ME, ...others.map((x) => x.name).filter((nm) => !p.result.opps.includes(nm))], b: p.result.opps, sa: (p.result.score || [])[0], sb: (p.result.score || [])[1], ts: Date.now() }] });
     upd((x) => ({ ...x, result: { ...x.result, confirmed, final: true, gain } }));
   };
-  const rnd = () => 3 + Math.floor(Math.random() * 3);
+  const rnd = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
   const demoReceive = () => {
-    const ents = others.map((o) => ({ from: o.name, postId: p.id, r: Object.fromEntries(R_ITEMS.map(([k]) => [k, rnd()])), s: Object.fromEntries(S_ITEMS.map((k) => [k, rnd()])) }));
+    const ents = others.map((o) => ({ from: o.name, postId: p.id, s: Object.fromEntries(SKILLS.map((x) => [x.k, rnd(8, 18)])), m: Object.fromEntries(M_ITEMS.map((k) => [k, rnd(3, 5)])) }));
     setMe({ ...me, received: [...(me.received || []), ...ents] });
     upd((x) => ({ ...x, recvDemo: true }));
   };

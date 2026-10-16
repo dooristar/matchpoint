@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { TIERS, ntrp } from '../lib/rating';
+import { SKILLS, SHORT, M_ITEMS, ntrpOfEval } from '../lib/skills';
 
 // 프로필 기본 정보 (데모 값)
 const PROFILE = {
@@ -10,24 +11,23 @@ const PROFILE = {
   badges: ['첫 랭크 승리', '10연승', '신규 상대 20명'],
 };
 const STYLES = ['올라운더', '베이스라이너', '서브앤발리', '슬라이스(스핀 마스터)', '문볼러'];
-const SKILL_ORDER = ['스트로크', '서브', '발리', '무브먼트', '운영', '매너'];   // 목록 순서
-const RADAR_ORDER = ['스트로크', '서브', '발리', '매너', '운영', '무브먼트'];   // 육각형 축 순서(시계방향)
-const DEFAULT_SKILLS = { 스트로크: 9, 서브: 10, 발리: 5, 무브먼트: 5, 운영: 5, 매너: 10 };
-const LEVELS = [2.0, 2.5, 3.0, 3.5, 4.0];
-const REVIEW_ROWS = [['level', '실력수준'], ['manner', '매너'], ['time', '시간약속'], ['attitude', '경기태도'], ['rematch', '재경기의향']];
-const DEFAULT_REVIEW = { level: 3, manner: 4, time: 5, attitude: 4, rematch: 4 };
+const SKILL_ORDER = SKILLS.map((x) => x.k);   // 목록·육각형 축 순서(시계방향)
+const RADAR_ORDER = SKILL_ORDER;
+const DEFAULT_SKILLS = { 포핸드: 15, 백핸드: 13, '서브&리턴': 16, '발리&네트플레이': 10, 안정성: 12, '파워&풋워크': 11 };
+const DEFAULT_REVIEW = { 시간약속: 5, 라인콜: 4, 매너: 4, 재경기의향: 4 };
+const DEFAULT_NTRP = 3.0;
 const RECORDS = { 일반: { g: 50, w: 40 }, 랭크: { g: 30, w: 24 }, 클럽: { g: 15, w: 11 }, 대회: { g: 5, w: 5 } };
 
-// 점수(1~10)에 따라 모양이 바뀌는 육각형
+// 점수(1~20)에 따라 모양이 바뀌는 육각형
 function Radar({ skills }) {
   const c = 110, r = 70;
   const pt = (i, v) => { const a = (-90 + i * 60) * Math.PI / 180; return [c + Math.cos(a) * r * v, c + Math.sin(a) * r * v]; };
   const ring = (v) => RADAR_ORDER.map((_, i) => pt(i, v).join(',')).join(' ');
   return (
-    <svg viewBox="0 0 220 220" width="190" height="190" role="img" aria-label="능력치 육각형 그래프">
+    <svg viewBox="-40 0 300 220" width="228" height="167" role="img" aria-label="능력치 육각형 그래프">
       {[0.5, 1].map((v) => <polygon key={v} points={ring(v)} fill="none" stroke="var(--line)" />)}
-      <polygon points={RADAR_ORDER.map((k, i) => pt(i, skills[k] / 10).join(',')).join(' ')} fill="var(--court)" fillOpacity=".35" stroke="var(--court)" strokeWidth="2" />
-      {RADAR_ORDER.map((k, i) => { const [x, y] = pt(i, 1.28); return <text key={k} x={x} y={y} fontSize="11" textAnchor="middle" dominantBaseline="middle" fill="var(--mute)">{k}</text>; })}
+      <polygon points={RADAR_ORDER.map((k, i) => pt(i, skills[k] / 20).join(',')).join(' ')} fill="var(--court)" fillOpacity=".35" stroke="var(--court)" strokeWidth="2" />
+      {RADAR_ORDER.map((k, i) => { const [x, y] = pt(i, 1.3); return <text key={k} x={x} y={y} fontSize="11" textAnchor="middle" dominantBaseline="middle" fill="var(--mute)">{SHORT[k]}</text>; })}
     </svg>
   );
 }
@@ -45,15 +45,14 @@ function Stars({ value, onChange, label, max = 5, size = 28 }) {
 
 export default function Profile({ me, setMe }) {
   const [rec, setRec] = useState('일반'), [mode, setMode] = useState('통합');
-  const received = me.received || [];
+  const received = (me.received || []).filter((e) => e.m && e.s);   // 새 평가 형식만 집계
   const avg = (get) => (received.length ? Math.round((received.reduce((a, e) => a + get(e), 0) / received.length) * 10) / 10 : null);
-  const baseSkills = { ...DEFAULT_SKILLS, ...(me.skills || {}) };
   const skills = {};
-  SKILL_ORDER.forEach((k) => { const a = avg((e) => e.s[k]); skills[k] = a === null ? baseSkills[k] : Math.min(10, Math.max(1, Math.round(a * 2))); });
+  SKILL_ORDER.forEach((k) => { const a = avg((e) => e.s[k]); skills[k] = a === null ? DEFAULT_SKILLS[k] : a; });
   const review = {};
-  REVIEW_ROWS.forEach(([k]) => { const a = avg((e) => e.r[k]); review[k] = a === null ? DEFAULT_REVIEW[k] : a; });
+  M_ITEMS.forEach((k) => { const a = avg((e) => e.m[k]); review[k] = a === null ? DEFAULT_REVIEW[k] : a; });
+  const ntrpAvg = avg((e) => ntrpOfEval(e.s)), ntrpShow = ntrpAvg === null ? DEFAULT_NTRP : ntrpAvg;
   const styles = me.styles || ['올라운더'];
-  const setSkill = (k, v) => { if (!received.length) setMe({ ...me, skills: { ...baseSkills, [k]: v } }); };
   const toggleStyle = (s) => setMe({ ...me, styles: styles.includes(s) ? styles.filter((x) => x !== s) : [...styles, s] });
 
   const log = me.matchLog || [];
@@ -98,18 +97,17 @@ export default function Profile({ me, setMe }) {
         </div>
       </div>
 
-      {/* 능력치: 육각형 + 별점 (별을 누르면 육각형 모양이 바뀜) */}
+      {/* 능력치: 육각형 + 점수 (받은 평가 평균이 반영돼요) */}
       <div className="card" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'center', alignItems: 'center' }}>
         <Radar skills={skills} />
-        <div style={{ flex: '1 1 250px', minWidth: 0 }}>
+        <div style={{ flex: '1 1 230px', minWidth: 0 }}>
           {SKILL_ORDER.map((k) => (
-            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <span style={{ width: 54, fontSize: 14 }}>{k}</span>
-              <Stars value={skills[k]} onChange={(v) => setSkill(k, v)} label={k} max={10} size={17} />
-              <span className="mute" style={{ minWidth: 34 }}>{skills[k]}/10</span>
+            <div key={k} className="row" style={{ padding: '5px 0' }}>
+              <span style={{ fontSize: 14 }}>{k.replace('&', ' & ')}</span>
+              <b>{skills[k]}<span className="mute" style={{ fontWeight: 400 }}>/20</span></b>
             </div>
           ))}
-          <div className="mute" style={{ fontSize: 12 }}>{received.length ? `받은 평가 ${received.length}개 평균 반영` : '받은 평가가 없어 직접 설정한 값이에요'}</div>
+          <div className="mute" style={{ fontSize: 12, marginTop: 4 }}>{received.length ? `받은 평가 ${received.length}개 평균 반영` : '아직 받은 평가가 없어 예시 값이에요'}</div>
         </div>
       </div>
 
@@ -150,15 +148,17 @@ export default function Profile({ me, setMe }) {
         </div>
       </div>
 
-      {/* 평가 */}
+      {/* 받은 평가 */}
       <div className="card">
-        <b>받은 평가</b> <span className="mute">{received.length ? `${received.length}개 평균` : '아직 없어요 (예시 값)'}</span>
-        {REVIEW_ROWS.map(([k, name]) => (
-          <div className="row" key={k} style={{ marginTop: 8 }}>
+        <b>받은 평가</b> <span className="mute">{received.length ? `${received.length}개 평가 누적` : '아직 없어요 (예시 값)'}</span>
+        <div className="row" style={{ marginTop: 10 }}><span>NTRP</span><b style={{ fontSize: 22 }}>{ntrpShow.toFixed(1)}</b></div>
+        <div className="mute" style={{ fontSize: 12 }}>상대방이 평가한 NTRP를 누적한 평균이에요.</div>
+        {M_ITEMS.map((name) => (
+          <div className="row" key={name} style={{ marginTop: 8 }}>
             <span>{name}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span role="img" aria-label={`${name} 평균 ${review[k]}점`} style={{ fontSize: 24, color: '#e6b800' }}>{'★'.repeat(Math.round(review[k]))}<span style={{ color: 'var(--line)' }}>{'★'.repeat(5 - Math.round(review[k]))}</span></span>
-              <span className="mute" style={{ minWidth: 30, textAlign: 'right' }}>{k === 'level' ? (2 + (review[k] - 1) * 0.5).toFixed(1) : `${Number(review[k]).toFixed(1)}/5`}</span>
+              <span role="img" aria-label={`${name} 평균 ${review[name]}점`} style={{ fontSize: 24, color: '#e6b800' }}>{'★'.repeat(Math.round(review[name]))}<span style={{ color: 'var(--line)' }}>{'★'.repeat(5 - Math.round(review[name]))}</span></span>
+              <span className="mute" style={{ minWidth: 30, textAlign: 'right' }}>{Number(review[name]).toFixed(1)}/5</span>
             </div>
           </div>
         ))}
